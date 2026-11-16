@@ -1,0 +1,215 @@
+<mujoco model="hexapod">
+  <compiler angle="radian"
+            inertiafromgeom="true"
+            inertiagrouprange="0 0"
+            discardvisual="false"/>
+
+  <option gravity="0 0 -9.81"
+          integrator="implicitfast"
+          solver="Newton"
+          timestep="0.01"
+          iterations="5"
+          tolerance="1e-5"
+          ls_iterations="5"
+          ls_tolerance="1e-5"
+          cone="elliptic">
+    <flag override="enable" midphase="disable"/>
+  </option>
+
+  <!-- ================= Robot Body ================= -->
+  <worldbody>
+    <body name="base_link" pos="0 0 0.3">
+      <joint type="free"/>
+
+      <geom name="base_link"
+            type="capsule"
+            fromto="-0.05 0 0  0.05 0 0"
+            size="0.0455"
+            rgba=".7 .7 .7 1"
+            mass="0.245"
+            contype="2"
+            conaffinity="253"/>
+
+      <!-- ================= Leg 1 ================= -->
+      <body name="leg_1_coxa" pos="-0.079498 0.067171 0"
+            quat="0.382683 0 0 0.923880">
+        <joint name="leg1coxa" axis="0 0 -1"/>
+        <geom type="capsule" fromto="0 0 0 0.06 0 0"
+              size="0.015" mass="0.074"/>
+
+        <body name="leg_1_femur" pos="0.06 0 0"
+              quat="0.5 0 -0.866025 0">
+          <joint name="leg1femur" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.12"
+                size="0.015" mass="0.05"/>
+
+          <body name="leg_1_tibia" pos="0 0 -0.12"
+                quat="0.707107 0 0.707107 0">
+            <joint name="leg1tibia" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 0 0 -0.22"
+                  size="0.015" mass="0.167"
+                  contype="1" conaffinity="1"/>
+            <site name="leg_1_foot" pos="0 0 -0.22"
+                  type="sphere" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= Leg 2 ================= -->
+      <body name="leg_2_coxa" pos="0 0.093 0"
+            quat="0.707107 0 0 0.707107">
+        <joint name="leg2coxa" axis="0 0 -1"/>
+        <geom type="capsule" fromto="0 0 0 0.06 0 0"
+              size="0.015" mass="0.074"/>
+
+        <body name="leg_2_femur" pos="0.06 0 0"
+              quat="0.5 0 -0.866025 0">
+          <joint name="leg2femur" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.12"
+                size="0.015" mass="0.05"/>
+
+          <body name="leg_2_tibia" pos="0 0 -0.12"
+                quat="0.707107 0 0.707107 0">
+            <joint name="leg2tibia" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 0 0 -0.22"
+                  size="0.015" mass="0.167"
+                  contype="2" conaffinity="1"/>
+            <site name="leg_2_foot" pos="0 0 -0.22"
+                  type="sphere" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= Leg 3 ================= -->
+      <body name="leg_3_coxa" pos="0.079498 0.067171 0"
+            quat="0.923880 0 0 0.382683">
+        <joint name="leg3coxa" axis="0 0 -1"/>
+        <geom type="capsule" fromto="0 0 0 0.06 0 0"
+              size="0.015" mass="0.074"/>
+
+        <body name="leg_3_femur" pos="0.06 0 0"
+              quat="0.5 0 -0.866025 0">
+          <joint name="leg3femur" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.12"
+                size="0.015" mass="0.05"/>
+
+          <body name="leg_3_tibia" pos="0 0 -0.12"
+                quat="0.707107 0 0.707107 0">
+            <joint name="leg3tibia" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 0 0 -0.22"
+                  size="0.015" mass="0.167"
+                  contype="4" conaffinity="1"/>
+            <site name="leg_3_foot" pos="0 0 -0.22"
+                  type="sphere" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= Leg 4 ================= -->
+      <body name="leg_4_coxa" pos="0.079498 -0.067171 0"
+            quat="0.923880 0 0 -0.382683">
+        <joint name="leg4coxa" axis="0 0 -1"/>
+        <geom type="capsule" fromto="0 0 0 0.06 0 0"
+              size="0.015" mass="0.074"/>
+
+        <body name="leg_4_femur" pos="0.06 0 0"
+              quat="0.5 0 -0.866025 0">
+          <joint name="leg4femur" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.12"
+                size="0.015" mass="0.05"/>
+
+          <body name="leg_4_tibia" pos="0 0 -0.12"
+                quat="0.707107 0 0.707107 0">
+            <joint name="leg4tibia" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 0 0 -0.22"
+                  size="0.015" mass="0.167"
+                  contype="8" conaffinity="1"/>
+            <site name="leg_4_foot" pos="0 0 -0.22"
+                  type="sphere" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= Leg 5 ================= -->
+      <body name="leg_5_coxa" pos="0 -0.093 0"
+            quat="0.707107 0 0 -0.707107">
+        <joint name="leg5coxa" axis="0 0 -1"/>
+        <geom type="capsule" fromto="0 0 0 0.06 0 0"
+              size="0.015" mass="0.074"/>
+
+        <body name="leg_5_femur" pos="0.06 0 0"
+              quat="0.5 0 -0.866025 0">
+          <joint name="leg5femur" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.12"
+                size="0.015" mass="0.05"/>
+
+          <body name="leg_5_tibia" pos="0 0 -0.12"
+                quat="0.707107 0 0.707107 0">
+            <joint name="leg5tibia" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 0 0 -0.22"
+                  size="0.015" mass="0.167"
+                  contype="16" conaffinity="1"/>
+            <site name="leg_5_foot" pos="0 0 -0.22"
+                  type="sphere" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ================= Leg 6 ================= -->
+      <body name="leg_6_coxa" pos="-0.079498 -0.067171 0"
+            quat="0.382683 0 0 -0.923880">
+        <joint name="leg6coxa" axis="0 0 -1"/>
+        <geom type="capsule" fromto="0 0 0 0.06 0 0"
+              size="0.015" mass="0.074"/>
+
+        <body name="leg_6_femur" pos="0.06 0 0"
+              quat="0.5 0 -0.866025 0">
+          <joint name="leg6femur" axis="0 1 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.12"
+                size="0.015" mass="0.05"/>
+
+          <body name="leg_6_tibia" pos="0 0 -0.12"
+                quat="0.707107 0 0.707107 0">
+            <joint name="leg6tibia" axis="0 1 0"/>
+            <geom type="capsule" fromto="0 0 0 0 0 -0.22"
+                  size="0.015" mass="0.167"
+                  contype="32" conaffinity="1"/>
+            <site name="leg_6_foot" pos="0 0 -0.22"
+                  type="sphere" size="0.01"/>
+          </body>
+        </body>
+      </body>
+
+    </body>
+  </worldbody>
+
+  <!-- ================= Actuators ================= -->
+  <actuator>
+    <!-- 18 velocity actuators -->
+    <velocity joint="leg1coxa" kv="0.8"/>
+    <velocity joint="leg1femur" kv="0.8"/>
+    <velocity joint="leg1tibia" kv="0.8"/>
+
+    <velocity joint="leg2coxa" kv="0.8"/>
+    <velocity joint="leg2femur" kv="0.8"/>
+    <velocity joint="leg2tibia" kv="0.8"/>
+
+    <velocity joint="leg3coxa" kv="0.8"/>
+    <velocity joint="leg3femur" kv="0.8"/>
+    <velocity joint="leg3tibia" kv="0.8"/>
+
+    <velocity joint="leg4coxa" kv="0.8"/>
+    <velocity joint="leg4femur" kv="0.8"/>
+    <velocity joint="leg4tibia" kv="0.8"/>
+
+    <velocity joint="leg5coxa" kv="0.8"/>
+    <velocity joint="leg5femur" kv="0.8"/>
+    <velocity joint="leg5tibia" kv="0.8"/>
+
+    <velocity joint="leg6coxa" kv="0.8"/>
+    <velocity joint="leg6femur" kv="0.8"/>
+    <velocity joint="leg6tibia" kv="0.8"/>
+  </actuator>
+
+</mujoco>
+

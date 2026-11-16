@@ -1,0 +1,10 @@
+| 功能            | 包名                     | 说明                         |
+| ------------- | ---------------------- | -------------------------- |
+| 强化学习          | `stable-baselines3`    | PPO、SAC 等算法                |
+| 多环境加速         | `gymnasium`            | 最新 Gym 接口                  |
+| MuJoCo 物理引擎   | `mujoco`               | 官方 MuJoCo                  |
+| Gym-MuJoCo 接口 | `gymnasium[mujoco]`    | Gym + MuJoCo 绑定            |
+| 向量化环境         | `stable-baselines3` 自带 | SubprocVecEnv、VecNormalize |
+| 神经网络          | `torch`                | PyTorch                    |
+| 数学计算          | `numpy`                | 标准科学计算库                    |
+tensorboard==2.14.0

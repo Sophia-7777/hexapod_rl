@@ -1,0 +1,158 @@
+<mujoco model="hexapod">
+    <compiler angle="degree" coordinate="local" inertiafromgeom="true"/>
+    <option timestep="0.01" integrator="Euler"/>
+
+    <!-- ================= Base ================= -->
+    <worldbody>
+        <geom name="floor" type="plane" size="10 10 1"
+              rgba="0.8 0.9 0.8 1" friction="1 0.5 0.5"/>
+
+        <body name="torso" pos="0 0 0.28">
+            <joint name="root" type="free"/>
+            <geom name="torso_geom" type="box" size="0.18 0.14 0.07"
+                  rgba="0.3 0.3 0.3 1"/>
+
+            <!-- ================= LEGS ================= -->
+            <!-- 每个第一层 body 加 dummy geom 避免 mjMINVAL -->
+
+            <!-- ===== FRONT LEFT ===== -->
+            <body name="leg_fl" pos="0.18 0.14 0">
+                <joint name="fl_hip_yaw" axis="0 0 1"/>
+                <geom type="sphere" size="0.001" mass="0.01" rgba="0 0 0 0"/>
+                <body>
+                    <joint name="fl_hip_pitch" axis="0 1 0" range="-45 45"/>
+                    <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.03"/>
+                    <body pos="0 0 -0.08">
+                        <joint name="fl_knee" axis="0 1 0" range="-90 0"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.12" size="0.025"/>
+                        <body pos="0 0 -0.12">
+                            <geom name="fl_foot_geom" type="sphere" size="0.035"
+                                  friction="2 0.5 0.5"/>
+                            <site name="fl_foot" pos="0 0 0" size="0.035"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ===== FRONT RIGHT ===== -->
+            <body name="leg_fr" pos="0.18 -0.14 0">
+                <joint name="fr_hip_yaw" axis="0 0 1"/>
+                <geom type="sphere" size="0.001" mass="0.01" rgba="0 0 0 0"/>
+                <body>
+                    <joint name="fr_hip_pitch" axis="0 1 0" range="-45 45"/>
+                    <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.03"/>
+                    <body pos="0 0 -0.08">
+                        <joint name="fr_knee" axis="0 1 0" range="-90 0"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.12" size="0.025"/>
+                        <body pos="0 0 -0.12">
+                            <geom name="fr_foot_geom" type="sphere" size="0.035"/>
+                            <site name="fr_foot" pos="0 0 0" size="0.035"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ===== MIDDLE LEFT ===== -->
+            <body name="leg_ml" pos="0.0 0.16 0">
+                <joint name="ml_hip_yaw" axis="0 0 1"/>
+                <geom type="sphere" size="0.001" mass="0.01" rgba="0 0 0 0"/>
+                <body>
+                    <joint name="ml_hip_pitch" axis="0 1 0" range="-45 45"/>
+                    <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.03"/>
+                    <body pos="0 0 -0.08">
+                        <joint name="ml_knee" axis="0 1 0" range="-90 0"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.12" size="0.025"/>
+                        <body pos="0 0 -0.12">
+                            <geom name="ml_foot_geom" type="sphere" size="0.035"/>
+                            <site name="ml_foot" pos="0 0 0" size="0.035"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ===== MIDDLE RIGHT ===== -->
+            <body name="leg_mr" pos="0.0 -0.16 0">
+                <joint name="mr_hip_yaw" axis="0 0 1"/>
+                <geom type="sphere" size="0.001" mass="0.01" rgba="0 0 0 0"/>
+                <body>
+                    <joint name="mr_hip_pitch" axis="0 1 0" range="-45 45"/>
+                    <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.03"/>
+                    <body pos="0 0 -0.08">
+                        <joint name="mr_knee" axis="0 1 0" range="-90 0"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.12" size="0.025"/>
+                        <body pos="0 0 -0.12">
+                            <geom name="mr_foot_geom" type="sphere" size="0.035"/>
+                            <site name="mr_foot" pos="0 0 0" size="0.035"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ===== BACK LEFT ===== -->
+            <body name="leg_bl" pos="-0.18 0.14 0">
+                <joint name="bl_hip_yaw" axis="0 0 1"/>
+                <geom type="sphere" size="0.001" mass="0.01" rgba="0 0 0 0"/>
+                <body>
+                    <joint name="bl_hip_pitch" axis="0 1 0" range="-45 45"/>
+                    <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.03"/>
+                    <body pos="0 0 -0.08">
+                        <joint name="bl_knee" axis="0 1 0" range="-90 0"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.12" size="0.025"/>
+                        <body pos="0 0 -0.12">
+                            <geom name="bl_foot_geom" type="sphere" size="0.035"/>
+                            <site name="bl_foot" pos="0 0 0" size="0.035"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ===== BACK RIGHT ===== -->
+            <body name="leg_br" pos="-0.18 -0.14 0">
+                <joint name="br_hip_yaw" axis="0 0 1"/>
+                <geom type="sphere" size="0.001" mass="0.01" rgba="0 0 0 0"/>
+                <body>
+                    <joint name="br_hip_pitch" axis="0 1 0" range="-45 45"/>
+                    <geom type="capsule" fromto="0 0 0 0 0 -0.08" size="0.03"/>
+                    <body pos="0 0 -0.08">
+                        <joint name="br_knee" axis="0 1 0" range="-90 0"/>
+                        <geom type="capsule" fromto="0 0 0 0 0 -0.12" size="0.025"/>
+                        <body pos="0 0 -0.12">
+                            <geom name="br_foot_geom" type="sphere" size="0.035"/>
+                            <site name="br_foot" pos="0 0 0" size="0.035"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+
+        </body>
+    </worldbody>
+
+    <!-- ================= Actuators ================= -->
+    <actuator>
+        <motor joint="fl_hip_yaw" gear="100"/>
+        <motor joint="fl_hip_pitch" gear="100"/>
+        <motor joint="fl_knee" gear="100"/>
+
+        <motor joint="fr_hip_yaw" gear="100"/>
+        <motor joint="fr_hip_pitch" gear="100"/>
+        <motor joint="fr_knee" gear="100"/>
+
+        <motor joint="ml_hip_yaw" gear="100"/>
+        <motor joint="ml_hip_pitch" gear="100"/>
+        <motor joint="ml_knee" gear="100"/>
+
+        <motor joint="mr_hip_yaw" gear="100"/>
+        <motor joint="mr_hip_pitch" gear="100"/>
+        <motor joint="mr_knee" gear="100"/>
+
+        <motor joint="bl_hip_yaw" gear="100"/>
+        <motor joint="bl_hip_pitch" gear="100"/>
+        <motor joint="bl_knee" gear="100"/>
+
+        <motor joint="br_hip_yaw" gear="100"/>
+        <motor joint="br_hip_pitch" gear="100"/>
+        <motor joint="br_knee" gear="100"/>
+    </actuator>
+
+</mujoco>
+

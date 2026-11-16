@@ -1,0 +1,52 @@
+<mujoco model="hexapod_round_pipe">
+
+  <!-- 六足机器人 -->
+  <include file="hexapod.xml"/>
+
+  <asset>
+    <material name="pipe_mat"
+              rgba="0.35 0.35 0.4 1"
+              reflectance="0.1"/>
+  </asset>
+
+  <worldbody>
+
+    <!-- ================= 圆柱管道（内壁） ================= -->
+    <!-- 注意：这是“墙”，机器人在里面 -->
+
+    <geom name="round_pipe"
+          type="cylinder"
+          pos="0 0 0"
+          size="0.45 6"
+          material="pipe_mat"
+          contype="1"
+          conaffinity="63"
+          solref="0.02 1"
+          solimp="0.95 0.99 0.001"/>
+
+    <!-- ================= 端盖（防止掉出） ================= -->
+    <geom name="pipe_cap_front"
+          type="box"
+          pos="6 0 0"
+          size="0.02 0.45 0.45"
+          material="pipe_mat"
+          contype="1"
+          conaffinity="63"/>
+
+    <geom name="pipe_cap_back"
+          type="box"
+          pos="-6 0 0"
+          size="0.02 0.45 0.45"
+          material="pipe_mat"
+          contype="1"
+          conaffinity="63"/>
+
+    <!-- 光源 -->
+    <light pos="0 0 1.5"
+           dir="0 0 -1"
+           directional="true"/>
+
+  </worldbody>
+
+</mujoco>
+

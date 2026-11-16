@@ -1,0 +1,116 @@
+<mujoco model="hexapod_narrow_env">
+  <compiler angle="radian" inertiafromgeom="true" discardvisual="false"/>
+
+  <!-- ================= Include Hexapod Robot ================= -->
+  <include file="hexapod.xml"/>
+
+  <!-- ================= Assets: Textures & Materials ================= -->
+  <asset>
+    <!-- checker 纹理 -->
+    <texture type="2d"
+             name="ground_tex"
+             builtin="checker"
+             rgb1="0.2 0.3 0.4"
+             rgb2="0.1 0.2 0.3"
+             width="512"
+             height="512"/>
+    <!-- 地面材质 -->
+    <material name="ground_mat"
+              texture="ground_tex"
+              texrepeat="5 5"
+              reflectance="0.2"/>
+    <!-- 墙壁材质 -->
+    <material name="wall_mat"
+              texture="ground_tex"
+              texrepeat="1 5"
+              reflectance="0.1"/>
+    <!-- 顶部材质 -->
+    <material name="ceiling_mat"
+              texture="ground_tex"
+              texrepeat="5 1"
+              reflectance="0.1"/>
+  </asset>
+
+  <option gravity="0 0 -9.81"
+          integrator="implicitfast"
+          timestep="0.005"
+          iterations="5"
+          cone="elliptic"/>
+
+  <worldbody>
+    <!-- ================= Environment ================= -->
+    <!-- 地面 -->
+    <geom name="floor"
+          type="plane"
+          size="5 5 0.01"
+          material="ground_mat"
+          friction="1 0.5 0.5"
+          contype="1"
+          conaffinity="1"/>
+
+    <!-- 左墙 -->
+    <geom name="wall_left"
+          type="box"
+          pos="0 1 0.125"
+          size="5 0.05 0.125"
+          material="wall_mat"
+          contype="1"
+          conaffinity="1"/>
+
+    <!-- <light pos="0 1 0.3" dir="0 -1 -0.1" directional="false" castshadow="false"/> -->
+    <!-- 右墙 -->
+    <geom name="wall_right"
+          type="box"
+          pos="0 -1 0.125"
+          size="5 0.05 0.125"
+          material="wall_mat"
+          contype="1"
+          conaffinity="1"/>
+    <!-- <light pos="0 -1 0.3" dir="0 1 -0.1" directional="false" castshadow="false"/> -->
+    <!-- 顶部 -->
+    <geom name="ceiling"
+          type="box"
+          pos="0 0 0.3"
+          size="5 1.25 0.01"
+          material="ceiling_mat"
+          contype="1"
+          conaffinity="1"
+          rgba="0.6 0.6 0.6 0.3"/>
+    <!-- ================= 光源 ================= -->
+
+    <!-- 顶部平行光，覆盖整个空间 -->
+    <light pos="0 0 0.3" dir="0 0 -1" directional="true" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3"/>
+
+    <!-- 地面附近光，向上照亮 -->
+    <light pos="0 0 0.05" dir="0 0 1" directional="false" diffuse="0.6 0.6 0.7" specular="0.2 0.2 0.2" castshadow="false"/>
+
+    <!-- 左墙光，向右照亮 -->
+    <light pos="0 1 0.2" dir="0 -1 0" directional="false" diffuse="0.5 0.5 0.6" castshadow="false"/>
+
+    <!-- 右墙光，向左照亮 -->
+    <light pos="0 -1 0.2" dir="0 1 0" directional="false" diffuse="0.5 0.5 0.6" castshadow="false"/>
+
+    <!-- 前墙光（如果想加），向后照亮 -->
+    <light pos="5 0 0.2" dir="-1 0 0" directional="false" diffuse="0.5 0.5 0.5" castshadow="false"/>
+
+    <!-- 后墙光（可选），向前照亮 -->
+    <light pos="-5 0 0.2" dir="1 0 0" directional="false" diffuse="0.5 0.5 0.5" castshadow="false"/>
+
+
+    <!-- <light pos="0 0 0.4"
+           dir="0 0 -1"
+           directional="true"/>
+    <light pos="2 0 0.3" dir="-1 0 -0.1" directional="false" castshadow="false"/>
+        地面附近光源
+    <light pos="0 0 0.05"                           
+        dir="0 0 1"           
+        directional="false"  
+        diffuse="0.5 0.5 0.6"
+        specular="0.2 0.2 0.2"
+        castshadow="false"/>   -->
+
+  </worldbody>
+
+  <!-- ================= Actuators ================= -->
+  <!-- 保留 hexapod.xml 中的 actuators -->
+</mujoco>

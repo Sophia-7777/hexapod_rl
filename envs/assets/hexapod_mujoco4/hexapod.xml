@@ -1,0 +1,152 @@
+<mujoco model="jethexa">
+    <compiler angle="radian" inertiafromgeom="true"/>
+    <option gravity="0 0 -9.81" timestep="0.005"/>
+
+    <!-- ================= Assets ================= -->
+    <asset>
+        <mesh name="body" file="meshes/simplify/body.stl" scale="0.001 0.001 0.001"/>
+        <mesh name="coxa" file="meshes/simplify/coxa.stl" scale="0.001 0.001 0.001"/>
+        <mesh name="L_femur" file="meshes/simplify/L_femur.stl" scale="0.001 0.001 0.001"/>
+        <mesh name="R_femur" file="meshes/simplify/R_femur.stl" scale="0.001 0.001 0.001"/>
+        <mesh name="L_tibia" file="meshes/simplify/L_tibia.stl" scale="0.001 0.001 0.001"/>
+        <mesh name="R_tibia" file="meshes/simplify/R_tibia.stl" scale="0.001 0.001 0.001"/>
+    </asset>
+
+    <!-- ================= World ================= -->
+    <worldbody>
+        <!-- base -->
+        <body name="base" pos="0 0 0.25">
+            <joint type="free"/>
+            <geom type="mesh" mesh="body" rgba="0.7 0.7 0.7 1"/>
+
+            <!-- ================= LEGS ================= -->
+
+            <!-- ========= LEFT FRONT ========= -->
+            <body name="LF_coxa" pos="0.093205 0.05098 0" quat="1 0 0 0">
+                <joint name="LF_coxa" axis="0 0 1"/>
+                <geom type="mesh" mesh="coxa"/>
+
+                <body name="LF_femur" pos="0.04505032 0 0">
+                    <joint name="LF_femur" axis="0 0 1"/>
+                    <geom type="mesh" mesh="L_femur"/>
+
+                    <body name="LF_tibia" pos="0.07703 0 0">
+                        <joint name="LF_tibia" axis="0 0 1"/>
+                        <geom type="mesh" mesh="L_tibia"/>
+                        <site name="LF_foot" pos="0.12 0 0" size="0.01"/>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ========= LEFT MIDDLE ========= -->
+            <body name="LM_coxa" pos="0 0.07353 0" quat="0.70710678 0 0 0.70710678">
+                <joint name="LM_coxa" axis="0 0 1"/>
+                <geom type="mesh" mesh="coxa"/>
+
+                <body name="LM_femur" pos="0.04505032 0 0">
+                    <joint name="LM_femur" axis="0 0 1"/>
+                    <geom type="mesh" mesh="L_femur"/>
+
+                    <body name="LM_tibia" pos="0.07703 0 0">
+                        <joint name="LM_tibia" axis="0 0 1"/>
+                        <geom type="mesh" mesh="L_tibia"/>
+                        <site name="LM_foot" pos="0.12 0 0" size="0.01"/>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ========= LEFT REAR ========= -->
+            <body name="LR_coxa" pos="-0.093205 0.05098 0" quat="0 0 0 1">
+                <joint name="LR_coxa" axis="0 0 1"/>
+                <geom type="mesh" mesh="coxa"/>
+
+                <body name="LR_femur" pos="0.04505032 0 0">
+                    <joint name="LR_femur" axis="0 0 1"/>
+                    <geom type="mesh" mesh="L_femur"/>
+
+                    <body name="LR_tibia" pos="0.07703 0 0">
+                        <joint name="LR_tibia" axis="0 0 1"/>
+                        <geom type="mesh" mesh="L_tibia"/>
+                        <site name="LR_foot" pos="0.12 0 0" size="0.01"/>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ========= RIGHT FRONT ========= -->
+            <body name="RF_coxa" pos="0.093205 -0.05098 0" quat="1 0 0 0">
+                <joint name="RF_coxa" axis="0 0 1"/>
+                <geom type="mesh" mesh="coxa"/>
+
+                <body name="RF_femur" pos="0.04505032 0 0">
+                    <joint name="RF_femur" axis="0 0 1"/>
+                    <geom type="mesh" mesh="R_femur"/>
+
+                    <body name="RF_tibia" pos="0.07703 0 0">
+                        <joint name="RF_tibia" axis="0 0 1"/>
+                        <geom type="mesh" mesh="R_tibia"/>
+                        <site name="RF_foot" pos="0.12 0 0" size="0.01"/>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ========= RIGHT MIDDLE ========= -->
+            <body name="RM_coxa" pos="0 -0.073535 0" quat="0.70710678 0 0 -0.70710678">
+                <joint name="RM_coxa" axis="0 0 1"/>
+                <geom type="mesh" mesh="coxa"/>
+
+                <body name="RM_femur" pos="0.04505032 0 0">
+                    <joint name="RM_femur" axis="0 0 1"/>
+                    <geom type="mesh" mesh="R_femur"/>
+
+                    <body name="RM_tibia" pos="0.07703 0 0">
+                        <joint name="RM_tibia" axis="0 0 1"/>
+                        <geom type="mesh" mesh="R_tibia"/>
+                        <site name="RM_foot" pos="0.12 0 0" size="0.01"/>
+                    </body>
+                </body>
+            </body>
+
+            <!-- ========= RIGHT REAR ========= -->
+            <body name="RR_coxa" pos="-0.093205 -0.05098 0" quat="0 0 0 1">
+                <joint name="RR_coxa" axis="0 0 1"/>
+                <geom type="mesh" mesh="coxa"/>
+
+                <body name="RR_femur" pos="0.04505032 0 0">
+                    <joint name="RR_femur" axis="0 0 1"/>
+                    <geom type="mesh" mesh="R_femur"/>
+
+                    <body name="RR_tibia" pos="0.07703 0 0">
+                        <joint name="RR_tibia" axis="0 0 1"/>
+                        <geom type="mesh" mesh="R_tibia"/>
+                        <site name="RR_foot" pos="0.12 0 0" size="0.01"/>
+                    </body>
+                </body>
+            </body>
+
+        </body>
+    </worldbody>
+
+    <!-- ================= Actuators ================= -->
+    <actuator>
+        <position joint="LF_coxa" kp="50"/>
+        <position joint="LF_femur" kp="80"/>
+        <position joint="LF_tibia" kp="60"/>
+        <position joint="LM_coxa" kp="50"/>
+        <position joint="LM_femur" kp="80"/>
+        <position joint="LM_tibia" kp="60"/>
+        <position joint="LR_coxa" kp="50"/>
+        <position joint="LR_femur" kp="80"/>
+        <position joint="LR_tibia" kp="60"/>
+        <position joint="RF_coxa" kp="50"/>
+        <position joint="RF_femur" kp="80"/>
+        <position joint="RF_tibia" kp="60"/>
+        <position joint="RM_coxa" kp="50"/>
+        <position joint="RM_femur" kp="80"/>
+        <position joint="RM_tibia" kp="60"/>
+        <position joint="RR_coxa" kp="50"/>
+        <position joint="RR_femur" kp="80"/>
+        <position joint="RR_tibia" kp="60"/>
+        <!-- 其余腿完全同理 -->
+    </actuator>
+</mujoco>
+
