@@ -20,7 +20,7 @@ import mujoco
 import mujoco.viewer
 from pynput import keyboard
 
-from envs.SopEngine import HexapodEngine, RobotState
+from envs.SopEngine import SopHexapodEngine, RobotState
 
 
 class KeyboardController:
@@ -117,7 +117,7 @@ def main():
     model = mujoco.MjModel.from_xml_path(args.xml)
     data = mujoco.MjData(model)
 
-    engine = HexapodEngine(model, data)
+    engine = SopHexapodEngine(model, data)
     keyboard_controller = KeyboardController(engine)
     keyboard_controller.start()
 

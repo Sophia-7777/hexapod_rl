@@ -23,7 +23,7 @@
             type="plane"
             size="10 10 1"
             material="ground_mat"
-            friction="2.0 0.05 0.02"  
+            friction="3.0 0.05 0.02"  
             rgba="0.2 0.3 0.4 1"
             contype="1"
             conaffinity="63"/>

@@ -21,7 +21,7 @@ class RobotState(Enum):
     WALK = auto()
 
 
-class HexapodGeometry:
+class SopHexapodGeometry:
     # Order must match leg1 ... leg6 in the XML.
     LEG_ORIGINS = np.array([
         [-0.079498,  0.067171, 0.0],
@@ -35,7 +35,7 @@ class HexapodGeometry:
     GAIT_OFFSETS = np.array([0.0, 0.5, 0.0, 0.5, 0.0, 0.5])
 
 
-class HexapodEngine:
+class SopHexapodEngine:
     def __init__(
         self,
         model,
@@ -59,11 +59,11 @@ class HexapodEngine:
         self.command = np.zeros(3, dtype=float)
 
         # Gait parameters. Tune only after the neutral pose is verified.
-        self.gait_period = 4.0
+        self.gait_period = 2.0
         self.stance_ratio = 0.60
-        self.step_height = 0.025
-        self.max_stride_x = 0.1
-        self.max_stride_y = 0.035
+        self.step_height = 0.1
+        self.max_stride_x = 0.08
+        self.max_stride_y = 0.07
         self.max_yaw_stride = 0.025
         self.gait_phase = 0.0
 
@@ -122,7 +122,7 @@ class HexapodEngine:
         # Joint postures are [coxa, femur, tibia] for each of six legs.
         # These are initial tuning values, not a claim of dynamically stable poses.
         self.stand_pose = np.tile(
-            np.array([0.0, 0.0, -0.2]), (6, 1)
+            np.array([0.0, 0.0, 0.3]), (6, 1)
         )
         self.squat_pose = np.tile(
             np.array([0.0, 0.35, -1.25]), (6, 1)
@@ -229,54 +229,100 @@ class HexapodEngine:
     # ------------------------------------------------------------------
 
     def _solve_leg_ik(self, leg_index, target_body):
-        """
-        Damped least-squares IK using the actual MuJoCo foot-site Jacobian.
-        This avoids duplicating a separate FK model that could diverge from XML.
-        """
         sid = int(self.site_ids[leg_index])
-        qadr = self.qpos_addresses[3 * leg_index: 3 * leg_index + 3]
-        dof = self.dof_addresses[3 * leg_index: 3 * leg_index + 3]
+
+        qadr = self.qpos_addresses[
+            3 * leg_index: 3 * leg_index + 3
+        ]
+
+        dof = self.dof_addresses[
+            3 * leg_index: 3 * leg_index + 3
+        ]
+
         lower, upper = self._joint_limits(leg_index)
 
+        # 保存真实仿真状态
+        original_qpos = self.data.qpos.copy()
+
         base_pos = self.data.xpos[self.base_body_id].copy()
-        base_rot = self.data.xmat[self.base_body_id].reshape(3, 3).copy()
-        target_world = base_pos + base_rot @ np.asarray(target_body, dtype=float)
+        base_rot = self.data.xmat[
+            self.base_body_id
+        ].reshape(3, 3).copy()
+
+        target_world = (
+            base_pos
+            + base_rot @ np.asarray(target_body, dtype=float)
+        )
 
         q = self.data.qpos[qadr].copy()
+
         damping = 0.025
-        max_iterations = 12
-        tolerance = 0.002
+        max_iterations = 30
+        tolerance = 0.001
 
         jacp = np.zeros((3, self.model.nv))
         jacr = np.zeros((3, self.model.nv))
 
-        for _ in range(max_iterations):
+        try:
+            for _ in range(max_iterations):
+
+                self.data.qpos[qadr] = q
+
+                mujoco.mj_forward(
+                    self.model,
+                    self.data
+                )
+
+                current = self.data.site_xpos[sid].copy()
+
+                error = target_world - current
+
+                if np.linalg.norm(error) < tolerance:
+                    break
+
+                mujoco.mj_jacSite(
+                    self.model,
+                    self.data,
+                    jacp,
+                    jacr,
+                    sid
+                )
+
+                J = jacp[:, dof]
+
+                A = (
+                    J @ J.T
+                    + damping ** 2 * np.eye(3)
+                )
+
+                try:
+                    dq = J.T @ np.linalg.solve(A, error)
+                except np.linalg.LinAlgError:
+                    break
+
+                dq_norm = np.linalg.norm(dq)
+
+                if dq_norm > 0.12:
+                    dq *= 0.12 / dq_norm
+
+                q = np.clip(
+                    q + dq,
+                    lower,
+                    upper
+                )
+
+            # 计算最终足端误差
             self.data.qpos[qadr] = q
             mujoco.mj_forward(self.model, self.data)
 
-            current = self.data.site_xpos[sid].copy()
-            error = target_world - current
-            if np.linalg.norm(error) < tolerance:
-                break
+            actual = self.data.site_xpos[sid].copy()
+            residual = np.linalg.norm(target_world - actual)
 
-            mujoco.mj_jacSite(self.model, self.data, jacp, jacr, sid)
-            J = jacp[:, dof]
+        finally:
+            # 恢复真实物理状态
+            self.data.qpos[:] = original_qpos
+            mujoco.mj_forward(self.model, self.data)
 
-            # DLS: dq = J.T (J J.T + lambda^2 I)^-1 e
-            A = J @ J.T + (damping ** 2) * np.eye(3)
-            try:
-                dq = J.T @ np.linalg.solve(A, error)
-            except np.linalg.LinAlgError:
-                break
-
-            dq_norm = np.linalg.norm(dq)
-            if dq_norm > 0.12:
-                dq *= 0.12 / dq_norm
-
-            q = np.clip(q + dq, lower, upper)
-
-        self.data.qpos[qadr] = q
-        mujoco.mj_forward(self.model, self.data)
         return q
 
     # ------------------------------------------------------------------
@@ -304,7 +350,7 @@ class HexapodEngine:
 
         vx, vy, wz = self.command
         for leg in range(6):
-            r = HexapodGeometry.LEG_ORIGINS[leg]
+            r = SopHexapodGeometry.LEG_ORIGINS[leg]
 
             # Translational stride plus the tangential component of yaw motion.
             stride_xy = np.array([
@@ -319,7 +365,7 @@ class HexapodEngine:
             stride = np.array([stride_xy[0], stride_xy[1], 0.0])
 
             phase = (
-                self.gait_phase + HexapodGeometry.GAIT_OFFSETS[leg]
+                self.gait_phase + SopHexapodGeometry.GAIT_OFFSETS[leg]
             ) % 1.0
 
             foot_target = self._foot_trajectory(
@@ -332,6 +378,9 @@ class HexapodEngine:
             self.joint_targets[leg] = self._solve_leg_ik(
                 leg, foot_target
             )
+            # if leg == 0:
+            #     print("Foot target:", foot_target)
+            #     print("Joint target:", self.joint_targets[leg])
 
     # ------------------------------------------------------------------
     # Main control update
@@ -372,6 +421,18 @@ class HexapodEngine:
                 self._update_walk_targets(dt)
 
         self._write_actuators(self.joint_targets)
+        # print(
+        #     "Base position:",
+        #     self.data.xpos[self.base_body_id]
+        # )
+
+        # print(
+        #     "Base velocity:",
+        #     self.data.qvel[:3]
+        # )
+        # print("Contacts:", self.data.ncon)
+        
+
 
     def get_status(self):
         return {

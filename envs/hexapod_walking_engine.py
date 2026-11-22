@@ -191,7 +191,7 @@ class NikEngineState:
         self.mode = self.STAND
         self.prev_mode = self.STAND
 
-        self.step_time = 0.5
+        self.step_time = 2.0
         self.step_height = 0.2
 
         self._step_time = self.step_time
