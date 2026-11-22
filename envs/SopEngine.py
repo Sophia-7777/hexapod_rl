@@ -1,659 +1,382 @@
-import numpy as np
+"""
+Hexapod control engine for MuJoCo.
+
+States:
+    SQUAT : crouched joint posture
+    STAND : neutral standing joint posture
+    WALK  : tripod gait with Cartesian foot targets and MuJoCo-site IK
+
+The engine owns the state machine, gait generator, IK and actuator commands.
+Keyboard handling and rendering are kept in simulation.py.
+"""
+
 from enum import Enum, auto
-from dataclasses import dataclass
+import numpy as np
+import mujoco
 
 
-# ============================================================
-# 1. Robot Parameters
-# ============================================================
+class RobotState(Enum):
+    SQUAT = auto()
+    STAND = auto()
+    WALK = auto()
 
-@dataclass
-class RobotConfig:
-    # Robot structure
-    num_legs: int = 6
-    joints_per_leg: int = 3
-
-    # Link dimensions (meters)
-    coxa_length: float = 0.06
-    femur_length: float = 0.12
-    tibia_length: float = 0.22
-
-    # Joint limits (radians)
-    coxa_range: tuple = (-0.6, 0.6)
-    femur_range: tuple = (-1.5, 1.5)
-    tibia_range: tuple = (-1.6, -0.2)
-
-    @property
-    def num_joints(self):
-        return self.num_legs * self.joints_per_leg
-
-def quaternion_to_matrix(quat):
-    """
-    Convert quaternion to rotation matrix.
-
-    Quaternion format:
-        [w, x, y, z]
-
-    This is the format used by MuJoCo.
-    """
-    quat = np.asarray(quat, dtype=float)
-
-    if quat.shape != (4,):
-        raise ValueError("Quaternion must have 4 elements.")
-
-    norm = np.linalg.norm(quat)
-
-    if norm < 1e-9:
-        raise ValueError("Invalid zero-length quaternion.")
-
-    w, x, y, z = quat / norm
-
-    return np.array([
-        [1 - 2*(y*y + z*z), 2*(x*y - z*w),     2*(x*z + y*w)],
-        [2*(x*y + z*w),     1 - 2*(x*x + z*z), 2*(y*z - x*w)],
-        [2*(x*z - y*w),     2*(y*z + x*w),     1 - 2*(x*x + y*y)]
-    ])
-
-# ============================================================
-# 2. Leg Mounting Positions
-# ============================================================
 
 class HexapodGeometry:
-
-    # Coxa joint positions relative to robot body frame
+    # Order must match leg1 ... leg6 in the XML.
     LEG_ORIGINS = np.array([
-        [-0.079498,  0.067171, 0.0],  # Leg 1
-        [ 0.000000,  0.093000, 0.0],  # Leg 2
-        [ 0.079498,  0.067171, 0.0],  # Leg 3
-        [ 0.079498, -0.067171, 0.0],  # Leg 4
-        [ 0.000000, -0.093000, 0.0],  # Leg 5
-        [-0.079498, -0.067171, 0.0],  # Leg 6
-    ])
-
-    LEG_QUATERNIONS = np.array([
-    [0.382683, 0, 0,  0.923880],
-    [0.707107, 0, 0,  0.707107],
-    [0.923880, 0, 0,  0.382683],
-    [0.923880, 0, 0, -0.382683],
-    [0.707107, 0, 0, -0.707107],
-    [0.382683, 0, 0, -0.923880],
-    ])
-
-    # Convert mounting quaternions into rotation matrices
-    LEG_ROTATIONS = np.array([
-        quaternion_to_matrix(q)
-        for q in LEG_QUATERNIONS
-    ])
-
-# ============================================================
-# 3. Mathematical Utilities
-# ============================================================
-
-def clamp(value, lower, upper):
-    """
-    Restrict a value to [lower, upper].
-    """
-    return np.clip(value, lower, upper)
-
-
-def wrap_angle(angle):
-    """
-    Normalize angle to [-pi, pi].
-    """
-    return (angle + np.pi) % (2 * np.pi) - np.pi
-
-
-def normalize_vector(vector, eps=1e-9):
-    """
-    Normalize a 3D vector.
-    """
-    vector = np.asarray(vector, dtype=float)
-    norm = np.linalg.norm(vector)
-
-    if norm < eps:
-        raise ValueError("Cannot normalize a zero-length vector.")
-
-    return vector / norm
-
-
-def rotation_x(angle):
-    """
-    Rotation matrix around X axis.
-    """
-    c = np.cos(angle)
-    s = np.sin(angle)
-
-    return np.array([
-        [1, 0, 0],
-        [0, c, -s],
-        [0, s, c]
-    ])
-
-
-def rotation_y(angle):
-    """
-    Rotation matrix around Y axis.
-    """
-    c = np.cos(angle)
-    s = np.sin(angle)
-
-    return np.array([
-        [c, 0, s],
-        [0, 1, 0],
-        [-s, 0, c]
-    ])
-
-
-def rotation_z(angle):
-    """
-    Rotation matrix around Z axis.
-    """
-    c = np.cos(angle)
-    s = np.sin(angle)
-
-    return np.array([
-        [c, -s, 0],
-        [s, c, 0],
-        [0, 0, 1]
-    ])
-
-
-
-def rotate_vector(vector, rotation_matrix):
-    """
-    Rotate a vector using a rotation matrix.
-    """
-    vector = np.asarray(vector, dtype=float)
-    rotation_matrix = np.asarray(rotation_matrix, dtype=float)
-
-    return rotation_matrix @ vector
-
-# ============================================================
-# 4. Coordinate Transformation
-# ============================================================
-
-class CoordinateTransformation:
-
-    @staticmethod
-    def body_to_leg(position, leg_index):
-        """
-        Transform a position from robot body frame
-        to the specified leg frame.
-
-        Args:
-            position: Position in body frame (3,)
-            leg_index: Leg index, from 0 to 5
-
-        Returns:
-            Position in leg frame (3,)
-        """
-
-        position = np.asarray(position, dtype=float)
-
-        if not 0 <= leg_index < 6:
-            raise IndexError("Invalid leg index.")
-
-        origin = HexapodGeometry.LEG_ORIGINS[leg_index]
-        rotation = HexapodGeometry.LEG_ROTATIONS[leg_index]
-
-        return rotation.T @ (position - origin)
-
-    @staticmethod
-    def leg_to_body(position, leg_index):
-        """
-        Transform a position from leg frame
-        to robot body frame.
-        """
-
-        position = np.asarray(position, dtype=float)
-
-        if not 0 <= leg_index < 6:
-            raise IndexError("Invalid leg index.")
-
-        origin = HexapodGeometry.LEG_ORIGINS[leg_index]
-        rotation = HexapodGeometry.LEG_ROTATIONS[leg_index]
-
-        return rotation @ position + origin
-
-
-# ============================================================
-# 6. Homogeneous Transformation
-# ============================================================
-
-def make_transform(rotation, translation):
-    """
-    Construct a 4x4 homogeneous transformation matrix.
-    """
-
-    T = np.eye(4)
-
-    T[:3, :3] = rotation
-    T[:3, 3] = translation
-
-    return T
-
-
-def translation_matrix(position):
-    """
-    Construct a pure translation matrix.
-    """
-
-    return make_transform(
-        np.eye(3),
-        np.asarray(position, dtype=float)
-    )
-
-
-def rotation_matrix_transform(rotation):
-    """
-    Convert a 3x3 rotation matrix to a 4x4 transform.
-    """
-
-    return make_transform(
-        rotation,
-        np.zeros(3)
-    )
-
-
-def axis_angle_rotation(axis, angle):
-    """
-    Construct a rotation matrix from an axis and angle.
-    """
-
-    axis = normalize_vector(axis)
-
-    x, y, z = axis
-
-    c = np.cos(angle)
-    s = np.sin(angle)
-    C = 1.0 - c
-
-    return np.array([
-        [x*x*C+c,   x*y*C-z*s, x*z*C+y*s],
-        [y*x*C+z*s, y*y*C+c,   y*z*C-x*s],
-        [z*x*C-y*s, z*y*C+x*s, z*z*C+c]
-    ])
-
-# ============================================================
-# 7. Leg Kinematics
-# ============================================================
-
-class LegKinematics:
-
-    # Coxa joint to Femur joint
-    COXA_TO_FEMUR = np.array([0.06, 0.0, 0.0])
-
-    # Femur joint to Tibia joint
-    FEMUR_TO_TIBIA = np.array([0.0, 0.0, -0.12])
-
-    # Tibia joint to Foot Site
-    TIBIA_TO_FOOT = np.array([0.0, 0.0, -0.22])
-
-    # Fixed orientation of Femur body
-    FEMUR_QUAT = np.array([
-        0.5, 0.0, -0.866025, 0.0
-    ])
-
-    # Fixed orientation of Tibia body
-    TIBIA_QUAT = np.array([
-        0.707107, 0.0, 0.707107, 0.0
-    ])
-
-    # Joint axes in their respective local frames
-    COXA_AXIS = np.array([0.0, 0.0, -1.0])
-    FEMUR_AXIS = np.array([0.0, 1.0, 0.0])
-    TIBIA_AXIS = np.array([0.0, 1.0, 0.0])
-
-    @staticmethod
-    def forward_kinematics(joint_angles, leg_index):
-        """
-        Calculate the foot position of one leg
-        in the robot body frame.
-
-        Args:
-            joint_angles:
-                [coxa_angle, femur_angle, tibia_angle]
-
-            leg_index:
-                Leg index from 0 to 5.
-
-        Returns:
-            Foot position in body frame (3,)
-        """
-
-        q1, q2, q3 = np.asarray(
-            joint_angles,
-            dtype=float
-        )
-
-        if not 0 <= leg_index < 6:
-            raise IndexError("Invalid leg index.")
-
-        # Mounting transformation
-        origin = HexapodGeometry.LEG_ORIGINS[leg_index]
-
-        R_mount = HexapodGeometry.LEG_ROTATIONS[leg_index]
-
-        T = make_transform(R_mount, origin)
-
-        # Coxa joint rotation
-        R_coxa = axis_angle_rotation(
-            LegKinematics.COXA_AXIS,
-            q1
-        )
-
-        T = T @ rotation_matrix_transform(R_coxa)
-
-        # Coxa -> Femur
-        T = T @ translation_matrix(
-            LegKinematics.COXA_TO_FEMUR
-        )
-
-        # Fixed Femur orientation
-        R_femur_fixed = quaternion_to_matrix(
-            LegKinematics.FEMUR_QUAT
-        )
-
-        T = T @ rotation_matrix_transform(
-            R_femur_fixed
-        )
-
-        # Femur joint rotation
-        R_femur = axis_angle_rotation(
-            LegKinematics.FEMUR_AXIS,
-            q2
-        )
-
-        T = T @ rotation_matrix_transform(R_femur)
-
-        # Femur -> Tibia
-        T = T @ translation_matrix(
-            LegKinematics.FEMUR_TO_TIBIA
-        )
-
-        # Fixed Tibia orientation
-        R_tibia_fixed = quaternion_to_matrix(
-            LegKinematics.TIBIA_QUAT
-        )
-
-        T = T @ rotation_matrix_transform(
-            R_tibia_fixed
-        )
-
-        # Tibia joint rotation
-        R_tibia = axis_angle_rotation(
-            LegKinematics.TIBIA_AXIS,
-            q3
-        )
-
-        T = T @ rotation_matrix_transform(R_tibia)
-
-        # Tibia -> Foot Site
-        T = T @ translation_matrix(
-            LegKinematics.TIBIA_TO_FOOT
-        )
-
-        return T[:3, 3]
-
-    @staticmethod
-    def calculate_jacobian(joint_angles, leg_index, epsilon=1e-6):
-        """
-        Calculate the numerical Jacobian of one leg.
-
-        Args:
-            joint_angles: Three joint angles.
-            leg_index: Leg index from 0 to 5.
-            epsilon: Numerical differentiation step.
-
-        Returns:
-            Jacobian matrix with shape (3, 3).
-        """
-
-        joint_angles = np.asarray(joint_angles, dtype=float)
-
-        if joint_angles.shape != (3,):
-            raise ValueError("joint_angles must have shape (3,)")
-
-        J = np.zeros((3, 3))
-
-        for i in range(3):
-
-            q_plus = joint_angles.copy()
-            q_minus = joint_angles.copy()
-
-            q_plus[i] += epsilon
-            q_minus[i] -= epsilon
-
-            p_plus = LegKinematics.forward_kinematics(q_plus, leg_index)
-            p_minus = LegKinematics.forward_kinematics(q_minus, leg_index)
-
-            J[:, i] = (p_plus - p_minus) / (2 * epsilon)
-
-        return J
-
-    @staticmethod
-    def inverse_kinematics(
-        target_position,
-        leg_index,
-        initial_angles=None,
-        max_iterations=100,
-        tolerance=1e-5,
-        damping=0.01
+        [-0.079498,  0.067171, 0.0],
+        [ 0.000000,  0.093000, 0.0],
+        [ 0.079498,  0.067171, 0.0],
+        [ 0.079498, -0.067171, 0.0],
+        [ 0.000000, -0.093000, 0.0],
+        [-0.079498, -0.067171, 0.0],
+    ], dtype=float)
+
+    GAIT_OFFSETS = np.array([0.0, 0.5, 0.0, 0.5, 0.0, 0.5])
+
+
+class HexapodEngine:
+    def __init__(
+        self,
+        model,
+        data,
+        control_period=0.02,
+        transition_duration=0.6,
     ):
-        """
-        Numerical inverse kinematics using Damped Least Squares.
+        self.model = model
+        self.data = data
+        self.control_period = float(control_period)
+        self.transition_duration = float(transition_duration)
 
-        Args:
-            target_position:
-                Target foot position in body frame.
+        self.state = RobotState.STAND
+        self._pending_state = None
+        self._transition_start = None
+        self._transition_goal = None
+        self._transition_elapsed = 0.0
+        self._is_transitioning = False
 
-            leg_index:
-                Leg index from 0 to 5.
+        # Normalized keyboard command: forward, lateral, yaw.
+        self.command = np.zeros(3, dtype=float)
 
-            initial_angles:
-                Initial joint angles. If None, use zero angles.
+        # Gait parameters. Tune only after the neutral pose is verified.
+        self.gait_period = 4.0
+        self.stance_ratio = 0.60
+        self.step_height = 0.025
+        self.max_stride_x = 0.1
+        self.max_stride_y = 0.035
+        self.max_yaw_stride = 0.025
+        self.gait_phase = 0.0
 
-            max_iterations:
-                Maximum iteration count.
+        # Per-leg nominal foot positions in the base_link frame.
+        self.nominal_feet = np.zeros((6, 3), dtype=float)
 
-            tolerance:
-                Position error threshold in meters.
+        self.joint_names = [
+            f"leg{i}{joint}"
+            for i in range(1, 7)
+            for joint in ("coxa", "femur", "tibia")
+        ]
+        self.site_names = [f"leg_{i}_foot" for i in range(1, 7)]
 
-            damping:
-                DLS damping coefficient.
+        self.joint_ids = []
+        self.qpos_addresses = []
+        self.dof_addresses = []
+        self.actuator_ids = []
+        self.site_ids = []
 
-        Returns:
-            joint_angles, success, error
-        """
+        for joint_name in self.joint_names:
+            jid = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name
+            )
+            if jid < 0:
+                raise ValueError(f"XML 中找不到关节: {joint_name}")
 
-        target_position = np.asarray(
-            target_position,
-            dtype=float
+            aid = np.flatnonzero(self.model.actuator_trnid[:, 0] == jid)
+            if len(aid) == 0:
+                raise ValueError(f"关节 {joint_name} 没有 position actuator")
+
+            self.joint_ids.append(jid)
+            self.qpos_addresses.append(int(self.model.jnt_qposadr[jid]))
+            self.dof_addresses.append(int(self.model.jnt_dofadr[jid]))
+            self.actuator_ids.append(int(aid[0]))
+
+        for site_name in self.site_names:
+            sid = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_SITE, site_name
+            )
+            if sid < 0:
+                raise ValueError(f"XML 中找不到足端 site: {site_name}")
+            self.site_ids.append(sid)
+
+        self.base_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "base_link"
+        )
+        if self.base_body_id < 0:
+            raise ValueError("XML 中找不到 base_link")
+
+        self.joint_ids = np.asarray(self.joint_ids, dtype=int)
+        self.qpos_addresses = np.asarray(self.qpos_addresses, dtype=int)
+        self.dof_addresses = np.asarray(self.dof_addresses, dtype=int)
+        self.actuator_ids = np.asarray(self.actuator_ids, dtype=int)
+        self.site_ids = np.asarray(self.site_ids, dtype=int)
+
+        # Joint postures are [coxa, femur, tibia] for each of six legs.
+        # These are initial tuning values, not a claim of dynamically stable poses.
+        self.stand_pose = np.tile(
+            np.array([0.0, 0.0, -0.2]), (6, 1)
+        )
+        self.squat_pose = np.tile(
+            np.array([0.0, 0.35, -1.25]), (6, 1)
         )
 
-        if target_position.shape != (3,):
-            raise ValueError("target_position must have shape (3,)")
+        self.joint_targets = self.stand_pose.copy()
 
-        if not 0 <= leg_index < 6:
-            raise IndexError("Invalid leg index.")
+        self._apply_joint_positions(self.stand_pose)
+        mujoco.mj_forward(self.model, self.data)
+        self._capture_nominal_feet()
 
-        if initial_angles is None:
-            q = np.array([0.0, 0.0, -0.8])
+        # Initialize actuators at the same pose as the model.
+        self._write_actuators(self.stand_pose)
+
+    # ------------------------------------------------------------------
+    # State machine API
+    # ------------------------------------------------------------------
+
+    def request_state(self, new_state):
+        """Request SQUAT, STAND or WALK. WALK is routed through STAND."""
+        if isinstance(new_state, str):
+            new_state = RobotState[new_state.upper()]
+        if not isinstance(new_state, RobotState):
+            raise ValueError("new_state 必须是 RobotState 或状态名称字符串")
+
+        if new_state == RobotState.WALK:
+            if self.state == RobotState.SQUAT:
+                # Stand first, then enter WALK.
+                self._pending_state = RobotState.WALK
+                self._begin_transition(self.stand_pose, RobotState.STAND)
+                return
+            if self.state == RobotState.STAND and not self._is_transitioning:
+                self.state = RobotState.WALK
+                self._pending_state = None
+                self.gait_phase = 0.0
+                return
+            if self.state == RobotState.WALK:
+                return
+            return
+
+        self._pending_state = None
+        if new_state == RobotState.STAND:
+            self.command[:] = 0.0
+            self._begin_transition(self.stand_pose, RobotState.STAND)
+        elif new_state == RobotState.SQUAT:
+            self.command[:] = 0.0
+            self._begin_transition(self.squat_pose, RobotState.SQUAT)
+
+    def set_command(self, vx=0.0, vy=0.0, wz=0.0):
+        """Set normalized movement command in [-1, 1]."""
+        self.command = np.clip(
+            np.asarray([vx, vy, wz], dtype=float), -1.0, 1.0
+        )
+
+        moving = np.linalg.norm(self.command) > 1e-4
+        if moving:
+            if self.state == RobotState.STAND and not self._is_transitioning:
+                self.request_state(RobotState.WALK)
+            elif self.state == RobotState.SQUAT:
+                # A walking request from squat automatically stands first.
+                self.request_state(RobotState.WALK)
         else:
-            q = np.asarray(initial_angles, dtype=float).copy()
+            if self.state == RobotState.WALK:
+                self.request_state(RobotState.STAND)
 
-        if q.shape != (3,):
-            raise ValueError("initial_angles must have shape (3,)")
+    def stop(self):
+        self.set_command(0.0, 0.0, 0.0)
 
-        # Joint limits
-        lower_limits = np.array([
-            -0.6,
-            -1.5,
-            -1.6
-        ])
+    def _begin_transition(self, target_pose, final_state):
+        self._transition_start = self.joint_targets.copy()
+        self._transition_goal = np.asarray(target_pose, dtype=float).copy()
+        self._transition_elapsed = 0.0
+        self._is_transitioning = True
+        self._transition_final_state = final_state
 
-        upper_limits = np.array([
-            0.6,
-            1.5,
-            -0.2
-        ])
+    # ------------------------------------------------------------------
+    # Model / actuator helpers
+    # ------------------------------------------------------------------
 
-        for iteration in range(max_iterations):
+    def _apply_joint_positions(self, angles_6x3):
+        self.data.qpos[self.qpos_addresses] = np.asarray(
+            angles_6x3, dtype=float
+        ).reshape(-1)
 
-            current_position = LegKinematics.forward_kinematics(
-                q,
-                leg_index
-            )
+    def _write_actuators(self, angles_6x3):
+        flat = np.asarray(angles_6x3, dtype=float).reshape(-1)
+        self.data.ctrl[self.actuator_ids] = flat
 
-            error_vector = target_position - current_position
+    def _capture_nominal_feet(self):
+        base_pos = self.data.xpos[self.base_body_id].copy()
+        base_rot = self.data.xmat[self.base_body_id].reshape(3, 3).copy()
+        for i, sid in enumerate(self.site_ids):
+            world_pos = self.data.site_xpos[sid].copy()
+            self.nominal_feet[i] = base_rot.T @ (world_pos - base_pos)
 
-            error = np.linalg.norm(error_vector)
+    def _joint_limits(self, leg_index):
+        ids = self.joint_ids[3 * leg_index: 3 * leg_index + 3]
+        lower = self.model.jnt_range[ids, 0]
+        upper = self.model.jnt_range[ids, 1]
+        return lower, upper
 
-            if error < tolerance:
-                return q, True, error
+    # ------------------------------------------------------------------
+    # MuJoCo-based inverse kinematics
+    # ------------------------------------------------------------------
 
-            J = LegKinematics.calculate_jacobian(q, leg_index)
+    def _solve_leg_ik(self, leg_index, target_body):
+        """
+        Damped least-squares IK using the actual MuJoCo foot-site Jacobian.
+        This avoids duplicating a separate FK model that could diverge from XML.
+        """
+        sid = int(self.site_ids[leg_index])
+        qadr = self.qpos_addresses[3 * leg_index: 3 * leg_index + 3]
+        dof = self.dof_addresses[3 * leg_index: 3 * leg_index + 3]
+        lower, upper = self._joint_limits(leg_index)
 
-            # Damped Least Squares
-            A = J @ J.T + damping**2 * np.eye(3)
+        base_pos = self.data.xpos[self.base_body_id].copy()
+        base_rot = self.data.xmat[self.base_body_id].reshape(3, 3).copy()
+        target_world = base_pos + base_rot @ np.asarray(target_body, dtype=float)
 
-            delta_q = J.T @ np.linalg.solve(A, error_vector)
+        q = self.data.qpos[qadr].copy()
+        damping = 0.025
+        max_iterations = 12
+        tolerance = 0.002
 
-            # Limit the maximum change per iteration
-            max_step = 0.1
+        jacp = np.zeros((3, self.model.nv))
+        jacr = np.zeros((3, self.model.nv))
 
-            delta_norm = np.linalg.norm(delta_q)
+        for _ in range(max_iterations):
+            self.data.qpos[qadr] = q
+            mujoco.mj_forward(self.model, self.data)
 
-            if delta_norm > max_step:
-                delta_q *= max_step / delta_norm
+            current = self.data.site_xpos[sid].copy()
+            error = target_world - current
+            if np.linalg.norm(error) < tolerance:
+                break
 
-            q += delta_q
+            mujoco.mj_jacSite(self.model, self.data, jacp, jacr, sid)
+            J = jacp[:, dof]
 
-            # Enforce joint limits
-            q = np.clip(
-                q,
-                lower_limits,
-                upper_limits
-            )
+            # DLS: dq = J.T (J J.T + lambda^2 I)^-1 e
+            A = J @ J.T + (damping ** 2) * np.eye(3)
+            try:
+                dq = J.T @ np.linalg.solve(A, error)
+            except np.linalg.LinAlgError:
+                break
 
-        final_position = LegKinematics.forward_kinematics(q, leg_index)
+            dq_norm = np.linalg.norm(dq)
+            if dq_norm > 0.12:
+                dq *= 0.12 / dq_norm
 
-        final_error = np.linalg.norm(
-            target_position - final_position
-        )
+            q = np.clip(q + dq, lower, upper)
 
-        return q, final_error < tolerance, final_error
+        self.data.qpos[qadr] = q
+        mujoco.mj_forward(self.model, self.data)
+        return q
 
-class FootTrajectory:
+    # ------------------------------------------------------------------
+    # Gait trajectory
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def generate(
-        phase,
-        nominal_position,
-        stride_vector,
-        step_height=0.03,
-        stance_ratio=0.6
-    ):
-        """
-        Generate foot trajectory in body frame.
-
-        Args:
-            phase:
-                Normalized gait phase [0, 1).
-
-            nominal_position:
-                Neutral foot position in body frame.
-
-            stride_vector:
-                Horizontal displacement vector
-                from rear extreme to front extreme.
-
-            step_height:
-                Maximum foot lifting height.
-
-            stance_ratio:
-                Fraction of the cycle spent in stance.
-
-        Returns:
-            target_position:
-                Foot target position in body frame.
-        """
-
-        nominal_position = np.asarray(
-            nominal_position,
-            dtype=float
-        )
-
-        stride_vector = np.asarray(
-            stride_vector,
-            dtype=float
-        )
-
-        if nominal_position.shape != (3,):
-            raise ValueError(
-                "nominal_position must have shape (3,)"
-            )
-
-        if stride_vector.shape != (3,):
-            raise ValueError(
-                "stride_vector must have shape (3,)"
-            )
-
-        if not np.isclose(stride_vector[2], 0.0):
-            raise ValueError(
-                "stride_vector must be horizontal"
-            )
-
-        if step_height < 0:
-            raise ValueError(
-                "step_height must be non-negative"
-            )
-
-        if not 0 < stance_ratio < 1:
-            raise ValueError(
-                "stance_ratio must be between 0 and 1"
-            )
-
-        # Normalize phase to [0, 1)
+    def _foot_trajectory(phase, nominal, stride, lift, stance_ratio):
         phase = float(phase) % 1.0
-
-        # -------------------------
-        # Stance phase
-        # -------------------------
         if phase < stance_ratio:
-
             u = phase / stance_ratio
-
-            # Move from front to rear
-            horizontal_offset = (
-                0.5 - u
-            ) * stride_vector
-
-            vertical_offset = 0.0
-
-        # -------------------------
-        # Swing phase
-        # -------------------------
+            offset = (0.5 - u) * stride
+            z_offset = 0.0
         else:
+            u = (phase - stance_ratio) / (1.0 - stance_ratio)
+            offset = (-0.5 + u) * stride
+            z_offset = lift * np.sin(np.pi * u)
 
-            u = (
-                phase - stance_ratio
-            ) / (1.0 - stance_ratio)
+        return nominal + offset + np.array([0.0, 0.0, z_offset])
 
-            # Move from rear to front
-            horizontal_offset = (
-                -0.5 + u
-            ) * stride_vector
+    def _update_walk_targets(self, dt):
+        self.gait_phase = (
+            self.gait_phase + dt / max(self.gait_period, 1e-4)
+        ) % 1.0
 
-            # Sinusoidal foot lifting
-            vertical_offset = (
-                step_height * np.sin(np.pi * u)
+        vx, vy, wz = self.command
+        for leg in range(6):
+            r = HexapodGeometry.LEG_ORIGINS[leg]
+
+            # Translational stride plus the tangential component of yaw motion.
+            stride_xy = np.array([
+                self.max_stride_x * vx,
+                self.max_stride_y * vy,
+            ])
+            yaw_xy = self.max_yaw_stride * wz * np.array([
+                -r[1] / 0.093,
+                 r[0] / 0.093,
+            ])
+            stride_xy = stride_xy + yaw_xy
+            stride = np.array([stride_xy[0], stride_xy[1], 0.0])
+
+            phase = (
+                self.gait_phase + HexapodGeometry.GAIT_OFFSETS[leg]
+            ) % 1.0
+
+            foot_target = self._foot_trajectory(
+                phase,
+                self.nominal_feet[leg],
+                stride,
+                self.step_height,
+                self.stance_ratio,
+            )
+            self.joint_targets[leg] = self._solve_leg_ik(
+                leg, foot_target
             )
 
-        target_position = (
-            nominal_position
-            + horizontal_offset
-            + np.array([0.0, 0.0, vertical_offset])
-        )
+    # ------------------------------------------------------------------
+    # Main control update
+    # ------------------------------------------------------------------
 
-        return target_position
+    def update(self, dt=None):
+        """Update state machine and actuator targets. Call at ~50 Hz."""
+        if dt is None:
+            dt = self.control_period
+        dt = float(dt)
+
+        if self._is_transitioning:
+            self._transition_elapsed += dt
+            alpha = min(
+                1.0,
+                self._transition_elapsed / max(self.transition_duration, 1e-4)
+            )
+            # Smoothstep interpolation: zero velocity at both endpoints.
+            s = alpha * alpha * (3.0 - 2.0 * alpha)
+            self.joint_targets = (
+                (1.0 - s) * self._transition_start
+                + s * self._transition_goal
+            )
+            if alpha >= 1.0:
+                self._is_transitioning = False
+                self.state = self._transition_final_state
+                self.joint_targets = self._transition_goal.copy()
+
+                if self._pending_state == RobotState.WALK:
+                    self._pending_state = None
+                    self.state = RobotState.WALK
+                    self.gait_phase = 0.0
+
+        elif self.state == RobotState.WALK:
+            if np.linalg.norm(self.command) < 1e-4:
+                self.request_state(RobotState.STAND)
+            else:
+                self._update_walk_targets(dt)
+
+        self._write_actuators(self.joint_targets)
+
+    def get_status(self):
+        return {
+            "state": self.state.name,
+            "command": self.command.copy(),
+            "transitioning": self._is_transitioning,
+            "gait_phase": float(self.gait_phase),
+        }
